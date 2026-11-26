@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1020">
+  <meta name="description" content="График рабочих смен компании КутиКатай">
+  <title>КутиКатай · график смен</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="login" class="login-screen">
+    <div class="login-glow"></div>
+    <form id="loginForm" class="login-card">
+      <div class="brand-mark">К</div>
+      <p class="eyebrow">УПРАВЛЕНИЕ КОМАНДОЙ</p>
+      <h1>КутиКатай</h1>
+      <p class="login-copy">Войдите, чтобы собрать график смен</p>
+      <label class="field-label" for="password">Пароль администратора</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="Введите пароль">
+      <button class="button primary full" type="submit">Войти в график <span>→</span></button>
+      <p id="loginError" class="form-error" role="alert"></p>
+      <p class="login-foot">Разработчик <b>fQzik</b></p>
+    </form>
+  </div>
+  <div id="app" class="app hidden">
+    <header class="topbar">
+      <button class="mobile-menu" id="mobileMenu" aria-label="Открыть меню">☰</button>
+      <a class="brand" href="/"><span class="brand-mark small">К</span><span>КутиКатай<small>ГРАФИК СМЕН</small></span></a>
+      <div class="topbar-right"><span class="live-dot"></span><span class="top-label">Панель администратора</span><button id="logout" class="icon-button" aria-label="Выйти" title="Выйти">↪</button></div>
+    </header>
+    <div class="app-layout">
+      <aside id="sidebar" class="sidebar">
+        <div class="side-caption">РАБОТА</div>
+        <button class="side-link active" data-view="schedule"><span class="side-icon">▦</span>График смен</button>
+        <button class="side-link" data-view="availability"><span class="side-icon">◷</span>Доступность</button>
+        <button class="side-link" data-view="staff"><span class="side-icon">♙</span>Сотрудники<span id="staffCount" class="side-count">—</span></button>
+        <div class="side-caption settings-cap">НАСТРОЙКИ</div>
+        <button class="side-link" data-view="points"><span class="side-icon">⌖</span>Точки</button>
+        <div class="sidebar-bottom"><span class="ice-orb">✳</span><span>Планируйте смены<br>без переписок и путаницы</span></div>
+      </aside>
+      <main id="main" class="main"></main>
+    </div>
+    <div id="modalRoot"></div>
+    <div id="toastRoot" aria-live="polite"></div>
+  </div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
+
