@@ -6,6 +6,8 @@ const token = () => randomBytes(32).toString('base64url');
 const validDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
 const validTime = (value) => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value || ''));
 const clean = (value, max = 100) => String(value || '').trim().slice(0, max);
+const normalizeTelegram = (value) => clean(value, 33).replace(/^@/, '').toLowerCase();
+const validTelegram = (value) => /^(?:\d{4,20}|[a-z][a-z0-9_]{4,31})$/.test(value);
 
 function sessionValue() {
   const body = Buffer.from(JSON.stringify({ role: 'admin', exp: Date.now() + 1000 * 60 * 60 * 24 * 14 })).toString('base64url');
@@ -72,9 +74,9 @@ export default async function handler(req, res) {
     await prepareDatabase(sql);
     if (action === 'register') {
       const input = await body(req);
-      const first = clean(input.firstName, 80), last = clean(input.lastName, 80), telegram = clean(input.telegramId, 30).replace(/^@/, '');
+      const first = clean(input.firstName, 80), last = clean(input.lastName, 80), telegram = normalizeTelegram(input.telegramId);
       const invite = clean(input.invite, 120);
-      if (!first || !last || !/^\d{4,20}$/.test(telegram) || !invite) return send(res, 400, { error: 'Заполните имя, фамилию и числовой Telegram ID' });
+      if (!first || !last || !validTelegram(telegram) || !invite) return send(res, 400, { error: 'Заполните имя, фамилию и Telegram username (например, @fqzik) или ID из цифр' });
       const invites = await sql`SELECT id FROM registration_invites WHERE token_hash = ${hash(invite)} AND active = true LIMIT 1`;
       if (!invites.length) return send(res, 403, { error: 'Ссылка регистрации недействительна или отключена' });
       const personal = token();
@@ -82,7 +84,7 @@ export default async function handler(req, res) {
       try {
         await sql`INSERT INTO employees (id, first_name, last_name, telegram_id, access_hash) VALUES (${id}, ${first}, ${last}, ${telegram}, ${hash(personal)})`;
       } catch (error) {
-        if (error.code === '23505') return send(res, 409, { error: 'Этот Telegram ID уже зарегистрирован. Попросите администратора помочь со входом.' });
+        if (error.code === '23505') return send(res, 409, { error: 'Этот Telegram username или ID уже зарегистрирован. Попросите администратора помочь со входом.' });
         throw error;
       }
       return send(res, 201, { ok: true, token: personal, employee: { firstName: first, lastName: last } });
@@ -133,11 +135,11 @@ export default async function handler(req, res) {
       return send(res, 200, { ok: true });
     }
     if (action === 'employee_add') {
-      const input = await body(req); const first = clean(input.firstName, 80), last = clean(input.lastName, 80), telegram = clean(input.telegramId, 30).replace(/^@/, '');
-      if (!first || !last || !/^\d{4,20}$/.test(telegram)) return send(res, 400, { error: 'Нужны имя, фамилия и числовой Telegram ID' });
+      const input = await body(req); const first = clean(input.firstName, 80), last = clean(input.lastName, 80), telegram = normalizeTelegram(input.telegramId);
+      if (!first || !last || !validTelegram(telegram)) return send(res, 400, { error: 'Укажите имя, фамилию и Telegram username (например, @fqzik) или ID из цифр' });
       const personal = token();
       try { await sql`INSERT INTO employees (id, first_name, last_name, telegram_id, access_hash) VALUES (${randomUUID()}, ${first}, ${last}, ${telegram}, ${hash(personal)})`; }
-      catch (error) { if (error.code === '23505') return send(res, 409, { error: 'Такой Telegram ID уже есть в списке' }); throw error; }
+      catch (error) { if (error.code === '23505') return send(res, 409, { error: 'Такой Telegram username или ID уже есть в списке' }); throw error; }
       return send(res, 201, { ok: true, url: `${req.headers.origin || `https://${req.headers.host}`}/employee.html#token=${encodeURIComponent(personal)}` });
     }
     if (action === 'employee_add_link') {
@@ -149,8 +151,8 @@ export default async function handler(req, res) {
       return send(res, 200, { url: `${req.headers.origin || `https://${req.headers.host}`}/employee.html#token=${encodeURIComponent(personal)}` });
     }
     if (action === 'employee_update') {
-      const input = await body(req); const first = clean(input.firstName, 80), last = clean(input.lastName, 80), telegram = clean(input.telegramId, 30).replace(/^@/, '');
-      if (!input.id || !first || !last || !/^\d{4,20}$/.test(telegram)) return send(res, 400, { error: 'Проверьте данные сотрудника' });
+      const input = await body(req); const first = clean(input.firstName, 80), last = clean(input.lastName, 80), telegram = normalizeTelegram(input.telegramId);
+      if (!input.id || !first || !last || !validTelegram(telegram)) return send(res, 400, { error: 'Проверьте имя, фамилию и Telegram username или ID' });
       await sql`UPDATE employees SET first_name=${first}, last_name=${last}, telegram_id=${telegram} WHERE id=${input.id} AND active=true`;
       return send(res, 200, { ok: true });
     }
