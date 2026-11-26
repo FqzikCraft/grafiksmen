@@ -79,6 +79,16 @@ export default async function handler(req, res) {
       if (!first || !last || !validTelegram(telegram) || !invite) return send(res, 400, { error: 'Заполните имя, фамилию и Telegram username (например, @fqzik) или ID из цифр' });
       const invites = await sql`SELECT id FROM registration_invites WHERE token_hash = ${hash(invite)} AND active = true LIMIT 1`;
       if (!invites.length) return send(res, 403, { error: 'Ссылка регистрации недействительна или отключена' });
+      const existing = await sql`SELECT id, first_name, last_name FROM employees WHERE telegram_id = ${telegram} AND active = true LIMIT 1`;
+      if (existing.length) {
+        const worker = existing[0];
+        if (worker.first_name.trim().toLowerCase() !== first.toLowerCase() || worker.last_name.trim().toLowerCase() !== last.toLowerCase()) {
+          return send(res, 409, { error: 'Аккаунт с таким Telegram уже есть. Проверьте имя и фамилию или обратитесь к администратору.' });
+        }
+        const personal = token();
+        await sql`UPDATE employees SET access_hash = ${hash(personal)} WHERE id = ${worker.id}`;
+        return send(res, 200, { ok: true, existing: true, token: personal, employee: { firstName: worker.first_name, lastName: worker.last_name } });
+      }
       const personal = token();
       const id = randomUUID();
       try {
