@@ -43,7 +43,7 @@ function matrixCell(point,d,shifts){
  const closed=!window.isPointOpen(point.id,d.date);
  const rows=shifts.filter(s=>s.pointId===point.id&&s.date===d.date).sort((a,b)=>a.start.localeCompare(b.start));
  const gaps=closed?[]:uncoveredRanges(point.id,d.date,shifts);
- const gapMarkup=rows.length&&gaps.length?`<div class="coverage-gap">Без сотрудника: ${gaps.map(esc).join(', ')}</div>`:'';
+ const hasAssigned=rows.some(s=>s.employeeId);const gapMarkup=hasAssigned&&gaps.length?`<div class="coverage-gap">Без сотрудника: ${gaps.map(esc).join(', ')}</div>`:'';
  const rowsMarkup=rows.map((s,i)=>{const color=['#6fc8ff','#aa8cff','#4de0ba','#ffbd71'][i%4];const unassigned=!s.employeeId;const label=unassigned?'Нет сотрудника':fullName(employee(s.employeeId));return `<button class="matrix-shift ${unassigned?'plain-unassigned':''}" data-schedule-shift="${s.id}" style="--shift-color:${color}" onclick="event.stopPropagation();window.openShift('${s.id}')" aria-label="Изменить смену: ${esc(label)}, ${s.start}–${s.end}"><strong>${esc(label)}</strong>${unassigned?'':`<span>${esc(s.start)}–${esc(s.end)}</span>`}</button>`}).join('');
  const addMarkup=closed?'':`<button class="matrix-add-shift" onclick="event.stopPropagation();window.openShift('', '${point.id}', '${d.date}')" aria-label="Добавить смену: ${esc(point.name)} ${d.date}">＋ <span>Добавить</span></button>`;
  const missingMarkup=!rows.length&&!closed?`<span class="matrix-empty no-employee">Нет сотрудника</span>`:'';
