@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { getSql, prepareDatabase } from './_db.js';
 
 const hash = (value) => createHash('sha256').update(String(value)).digest('hex');
@@ -8,6 +8,19 @@ const validTime = (value) => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value || ''
 const clean = (value, max = 100) => String(value || '').trim().slice(0, max);
 const normalizeTelegram = (value) => clean(value, 33).replace(/^@/, '').toLowerCase();
 const validTelegram = (value) => /^(?:\d{4,20}|[a-z][a-z0-9_]{4,31})$/.test(value);
+const inviteKey = () => createHash('sha256').update(`kutikatay-invites:${process.env.SESSION_SECRET || ''}`).digest();
+function encryptInvite(value) {
+  const iv = randomBytes(12), cipher = createCipheriv('aes-256-gcm', inviteKey(), iv);
+  const ciphertext = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
+  return [iv.toString('base64url'), cipher.getAuthTag().toString('base64url'), ciphertext.toString('base64url')].join('.');
+}
+function decryptInvite(value) {
+  const [iv, tag, ciphertext] = String(value || '').split('.');
+  if (!iv || !tag || !ciphertext) throw new Error('Invalid invite ciphertext');
+  const decipher = createDecipheriv('aes-256-gcm', inviteKey(), Buffer.from(iv, 'base64url'));
+  decipher.setAuthTag(Buffer.from(tag, 'base64url'));
+  return Buffer.concat([decipher.update(Buffer.from(ciphertext, 'base64url')), decipher.final()]).toString('utf8');
+}
 
 function sessionValue() {
   const body = Buffer.from(JSON.stringify({ role: 'admin', exp: Date.now() + 1000 * 60 * 60 * 24 * 14 })).toString('base64url');
@@ -136,12 +149,49 @@ export default async function handler(req, res) {
     }
     if (action === 'invite_create') {
       const code = token();
-      await sql`INSERT INTO registration_invites (id, token_hash) VALUES (${randomUUID()}, ${hash(code)})`;
+      await sql`INSERT INTO registration_invites (id, token_hash, token_encrypted) VALUES (${randomUUID()}, ${hash(code)}, ${encryptInvite(code)})`;
       const origin = req.headers.origin || `https://${req.headers.host}`;
       return send(res, 201, { url: `${origin}/employee.html#invite=${encodeURIComponent(code)}` });
     }
+    if (action === 'invite_list') {
+      const rows = await sql`SELECT id, token_encrypted AS encrypted, active, created_at::text AS "createdAt" FROM registration_invites WHERE active = true ORDER BY created_at DESC`;
+      const origin = req.headers.origin || `https://${req.headers.host}`;
+      let unavailableCount = 0;
+      const invites = rows.flatMap((row) => {
+        try {
+          if (!row.encrypted) throw new Error('Invite predates encrypted storage');
+          const code = decryptInvite(row.encrypted);
+          return [{ id: row.id, url: `${origin}/employee.html#invite=${encodeURIComponent(code)}`, createdAt: row.createdAt }];
+        } catch { unavailableCount++; return []; }
+      });
+      return send(res, 200, { invites, unavailableCount });
+    }
+    if (action === 'invite_revoke') {
+      const input = await body(req);
+      if (!input.id) return send(res, 400, { error: 'Не выбрана ссылка' });
+      const updated = await sql`UPDATE registration_invites SET active = false WHERE id = ${input.id} AND active = true RETURNING id`;
+      if (!updated.length) return send(res, 404, { error: 'Ссылка не найдена или уже отключена' });
+      return send(res, 200, { ok: true });
+    }
     if (action === 'invite_disable') {
       await sql`UPDATE registration_invites SET active = false WHERE active = true`;
+      return send(res, 200, { ok: true });
+    }
+    if (action === 'availability_update') {
+      const input = await body(req);
+      const from = String(input.from || ''), to = String(input.to || ''), entries = Array.isArray(input.days) ? input.days : [];
+      if (!input.employeeId || !validDate(from) || !validDate(to) || from > to || entries.length > 7) return send(res, 400, { error: 'Проверьте сотрудника и период доступности' });
+      const workers = await sql`SELECT id FROM employees WHERE id = ${input.employeeId} AND active = true LIMIT 1`;
+      if (!workers.length) return send(res, 404, { error: 'Сотрудник не найден' });
+      const seen = new Set();
+      for (const entry of entries) {
+        if (!validDate(entry.date) || entry.date < from || entry.date > to || seen.has(entry.date) || !validTime(entry.start) || !validTime(entry.end) || entry.start >= entry.end) return send(res, 400, { error: 'Проверьте даты и время доступности' });
+        seen.add(entry.date);
+      }
+      await sql.transaction([
+        sql`DELETE FROM availability WHERE employee_id = ${input.employeeId} AND work_date BETWEEN ${from} AND ${to}`,
+        ...entries.map((entry) => sql`INSERT INTO availability (employee_id, work_date, available_from, available_to) VALUES (${input.employeeId}, ${entry.date}, ${entry.start}, ${entry.end}) ON CONFLICT (employee_id, work_date) DO UPDATE SET available_from = EXCLUDED.available_from, available_to = EXCLUDED.available_to, updated_at = now()`),
+      ]);
       return send(res, 200, { ok: true });
     }
     if (action === 'employee_add') {
