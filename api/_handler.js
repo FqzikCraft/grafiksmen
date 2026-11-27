@@ -127,7 +127,7 @@ export default async function handler(req, res) {
       const [employees, points, pointDays, shifts, availability, invites] = await Promise.all([
         sql`SELECT id, first_name AS "firstName", last_name AS "lastName", telegram_id AS "telegramId" FROM employees WHERE active = true ORDER BY last_name, first_name`,
         sql`SELECT id, name, address FROM points WHERE active = true ORDER BY name`,
-        sql`SELECT point_id AS "pointId", work_date::text AS date, is_open AS open, to_char(opens_at, 'HH24:MI') AS "opensAt", to_char(closes_at, 'HH24:MI') AS "closesAt", required_count AS "requiredCount" FROM point_days WHERE work_date BETWEEN ${dates.from} AND ${dates.to}`,
+        sql`SELECT point_id AS "pointId", work_date::text AS date, is_open AS open, '10:00' AS "opensAt", '22:00' AS "closesAt", 1 AS "requiredCount" FROM point_days WHERE work_date BETWEEN ${dates.from} AND ${dates.to}`,
         sql`SELECT id, work_date::text AS date, point_id AS "pointId", employee_id AS "employeeId", to_char(starts_at, 'HH24:MI') AS start, to_char(ends_at, 'HH24:MI') AS end FROM shifts WHERE work_date BETWEEN ${dates.from} AND ${dates.to} ORDER BY work_date, starts_at`,
         sql`SELECT employee_id AS "employeeId", work_date::text AS date, to_char(available_from, 'HH24:MI') AS start, to_char(available_to, 'HH24:MI') AS end FROM availability WHERE work_date BETWEEN ${dates.from} AND ${dates.to}`,
         sql`SELECT count(*)::int AS count FROM registration_invites WHERE active = true`
@@ -180,15 +180,16 @@ export default async function handler(req, res) {
     }
     if (action === 'day_update') {
       const input = await body(req);
-      if (!input.pointId || !validDate(input.date) || !validTime(input.opensAt) || !validTime(input.closesAt) || input.opensAt >= input.closesAt) return send(res, 400, { error: 'Проверьте часы работы' });
-      await sql`INSERT INTO point_days (point_id, work_date, is_open, opens_at, closes_at, required_count) VALUES (${input.pointId}, ${input.date}, ${Boolean(input.open)}, ${input.opensAt}, ${input.closesAt}, ${Math.max(0, Math.min(50, Number(input.requiredCount)||0))}) ON CONFLICT (point_id, work_date) DO UPDATE SET is_open=EXCLUDED.is_open, opens_at=EXCLUDED.opens_at, closes_at=EXCLUDED.closes_at, required_count=EXCLUDED.required_count`;
+      if (!input.pointId || !validDate(input.date) || typeof input.open !== 'boolean') return send(res, 400, { error: 'Проверьте дату и состояние точки' });
+      await sql`INSERT INTO point_days (point_id, work_date, is_open, opens_at, closes_at, required_count) VALUES (${input.pointId}, ${input.date}, ${input.open}, '10:00', '22:00', 1) ON CONFLICT (point_id, work_date) DO UPDATE SET is_open=EXCLUDED.is_open`;
       return send(res, 200, { ok: true });
     }
     if (action === 'shift_save') {
       const input = await body(req);
       if (!validDate(input.date) || !validTime(input.start) || !validTime(input.end) || input.start >= input.end || !input.pointId) return send(res, 400, { error: 'Проверьте дату, точку и время смены' });
-      const configs = await sql`SELECT is_open, to_char(opens_at,'HH24:MI') AS start, to_char(closes_at,'HH24:MI') AS end FROM point_days WHERE point_id=${input.pointId} AND work_date=${input.date} LIMIT 1`;
-      if (configs.length && (!configs[0].is_open || input.start < configs[0].start || input.end > configs[0].end)) return send(res, 409, { error: 'Смена выходит за часы работы точки или точка закрыта' });
+      const configs = await sql`SELECT is_open FROM point_days WHERE point_id=${input.pointId} AND work_date=${input.date} LIMIT 1`;
+      if (input.start < '10:00' || input.end > '22:00') return send(res, 409, { error: 'Смена должна быть в пределах 10:00–22:00' });
+      if (configs.length && !configs[0].is_open) return send(res, 409, { error: 'Точка закрыта на эту дату' });
       if (input.employeeId) {
         const conflict = await sql`SELECT id FROM shifts WHERE employee_id=${input.employeeId} AND work_date=${input.date} AND starts_at < ${input.end} AND ends_at > ${input.start} AND id <> ${input.id || ''} LIMIT 1`;
         if (conflict.length) return send(res, 409, { error: 'У сотрудника уже есть пересекающаяся смена' });
