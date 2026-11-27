@@ -122,8 +122,11 @@ export default async function handler(req, res) {
       if (action === 'worker_load') {
         const dates = range(req, input);
         if (!dates) return send(res, 400, { error: 'Не задан период' });
-        const values = await sql`SELECT work_date::text AS date, to_char(available_from, 'HH24:MI') AS start, to_char(available_to, 'HH24:MI') AS end FROM availability WHERE employee_id = ${worker.id} AND work_date BETWEEN ${dates.from} AND ${dates.to} ORDER BY work_date`;
-        return send(res, 200, { employee: { firstName: worker.first_name, lastName: worker.last_name }, availability: values });
+        const [values, assignedShifts] = await Promise.all([
+          sql`SELECT work_date::text AS date, to_char(available_from, 'HH24:MI') AS start, to_char(available_to, 'HH24:MI') AS end FROM availability WHERE employee_id = ${worker.id} AND work_date BETWEEN ${dates.from} AND ${dates.to} ORDER BY work_date`,
+          sql`SELECT s.id, s.work_date::text AS date, s.point_id AS "pointId", p.name AS "pointName", p.address AS "pointAddress", to_char(s.starts_at, 'HH24:MI') AS start, to_char(s.ends_at, 'HH24:MI') AS end FROM shifts s JOIN points p ON p.id = s.point_id WHERE s.employee_id = ${worker.id} AND s.work_date BETWEEN ${dates.from} AND ${dates.to} ORDER BY s.work_date, s.starts_at`,
+        ]);
+        return send(res, 200, { employee: { firstName: worker.first_name, lastName: worker.last_name }, availability: values, shifts: assignedShifts });
       }
       const entries = Array.isArray(input.days) ? input.days.slice(0, 7) : [];
       if (!validDate(input.from) || !validDate(input.to) || input.from > input.to) return send(res, 400, { error: 'Не задан период доступности' });
