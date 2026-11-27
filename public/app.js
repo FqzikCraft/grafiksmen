@@ -41,7 +41,7 @@ function renderSchedule(){
 function matrixCell(point,d,shifts){
  const closed=!window.isPointOpen(point.id,d.date);
  const rows=shifts.filter(s=>s.pointId===point.id&&s.date===d.date).sort((a,b)=>a.start.localeCompare(b.start));
- return `${closed?'<span class="matrix-closed">Закрыта</span>':''}${rows.map((s,i)=>{const color=['#6fc8ff','#aa8cff','#4de0ba','#ffbd71'][i%4];const unassigned=!s.employeeId;const label=unassigned?'Нет сотрудника!':fullName(employee(s.employeeId));return `<button class="matrix-shift ${unassigned?'is-unassigned':''}" data-schedule-shift="${s.id}" style="--shift-color:${color}" onclick="event.stopPropagation();window.openShift('${s.id}')" aria-label="Изменить смену: ${esc(label)}, ${s.start}–${s.end}"><strong>${esc(label)}</strong><span>${esc(s.start)}–${esc(s.end)}</span></button>`}).join('')}${closed?'':`<button class="matrix-add-shift" onclick="event.stopPropagation();window.openShift('', '${point.id}', '${d.date}')" aria-label="Добавить смену: ${esc(point.name)} ${d.date}">＋ <span>${rows.length?'Добавить':'Добавить смену'}</span></button>`}${!rows.length&&!closed?`<span class="matrix-empty no-employee">Нет сотрудника!</span>`:''}`;
+ return `${closed?'<span class="matrix-closed">Закрыта</span>':''}${rows.map((s,i)=>{const color=['#6fc8ff','#aa8cff','#4de0ba','#ffbd71'][i%4];const unassigned=!s.employeeId;const label=unassigned?'Нет сотрудника':fullName(employee(s.employeeId));return `<button class="matrix-shift ${unassigned?'plain-unassigned':''}" data-schedule-shift="${s.id}" style="--shift-color:${color}" onclick="event.stopPropagation();window.openShift('${s.id}')" aria-label="Изменить смену: ${esc(label)}, ${s.start}–${s.end}"><strong>${esc(label)}</strong><span>${esc(s.start)}–${esc(s.end)}</span></button>`}).join('')}${closed?'':`<button class="matrix-add-shift" onclick="event.stopPropagation();window.openShift('', '${point.id}', '${d.date}')" aria-label="Добавить смену: ${esc(point.name)} ${d.date}">＋ <span>Добавить</span></button>`}${!rows.length&&!closed?`<span class="matrix-empty no-employee">Нет сотрудника</span>`:''}`;
 }
 window.isPointOpen=(pointId,date)=>!data.pointDays.some(x=>x.pointId===pointId&&x.date===date&&!x.open);
 function collectScheduleIssues(visiblePoints=data.points,shifts=data.shifts,ds=days()){
@@ -51,11 +51,11 @@ function collectScheduleIssues(visiblePoints=data.points,shifts=data.shifts,ds=d
   const rows=shifts.filter(s=>s.pointId===p.id&&s.date===day.date);
   const isOpen=window.isPointOpen(p.id,day.date);
   if(!isOpen&&rows.length)for(const s of rows)add('closed','Точка закрыта','Смена '+s.start+'–'+s.end+' стоит в закрытый день.',p.id,day.date,s.id);
-  if(isOpen&&!rows.length)add('missing','Нет сотрудника!','У открытой точки нет смены или назначенного сотрудника.',p.id,day.date);
+  if(isOpen&&!rows.length)add('missing','Нет сотрудника','У открытой точки нет смены или назначенного сотрудника.',p.id,day.date);
  }
  for(const s of shifts){
   const e=employee(s.employeeId);
-  if(!e){add('unassigned','Нет сотрудника!','Смена '+s.start+'–'+s.end+' не назначена.',s.pointId,s.date,s.id);continue}
+  if(!e){add('unassigned','Нет сотрудника','Смена '+s.start+'–'+s.end+' не назначена.',s.pointId,s.date,s.id);continue}
   const a=data.availability.find(x=>x.employeeId===e.id&&x.date===s.date);
   if(!a)add('availability-missing','Доступность не указана',fullName(e)+' не отметил доступность на этот день.',s.pointId,s.date,s.id);
   else if(s.start<a.start||s.end>a.end)add('availability-time','Время вне доступности',fullName(e)+' доступен '+a.start+'–'+a.end+', смена '+s.start+'–'+s.end+'.',s.pointId,s.date,s.id);
