@@ -22,9 +22,11 @@ export async function prepareDatabase(sql) {
       await sql`CREATE TABLE IF NOT EXISTS registration_invites (
         id text PRIMARY KEY,
         token_hash text NOT NULL UNIQUE,
+        token_encrypted text,
         active boolean NOT NULL DEFAULT true,
         created_at timestamptz NOT NULL DEFAULT now()
       )`;
+      await sql`ALTER TABLE registration_invites ADD COLUMN IF NOT EXISTS token_encrypted text`;
       await sql`CREATE TABLE IF NOT EXISTS points (
         id text PRIMARY KEY,
         name text NOT NULL,
